@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum KycStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OfferStatus {
+  OPEN
+  MATCHED
+  CANCELLED
+  EXPIRED
+}
+
+enum TradeStatus {
+  CREATED
+  BUYER_JOINED
+  PAID
+  RELEASED
+  CANCELLED
+  DISPUTED
+  REFUNDED
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String?   @unique
+  passwordHash  String?
+  walletAddress String    @unique
+  role          Role      @default(USER)
+  kycStatus     KycStatus @default(NONE)
+  displayName   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  offersAsSeller Offer[]        @relation("SellerOffers")
+  tradesAsBuyer  Trade[]        @relation("BuyerTrades")
+  tradesAsSeller Trade[]        @relation("SellerTrades")
+  messages       Message[]
+  notifications  Notification[]
+
+  @@index([walletAddress])
+}
+
+model Offer {
+  id           String      @id @default(uuid())
+  seller       User        @relation("SellerOffers", fields: [sellerId], references: [id])
+  sellerId     String
+  tokenSymbol  String
+  tokenAddress String
+  price        Decimal
+  quantity     Decimal
+  minAmount    Decimal?
+  paymentMethods String[] // e.g. ["BANK_TRANSFER", "STRIPE", "USDC"]
+  countryRestrictions String[]
+  status       OfferStatus @default(OPEN)
+  expiresAt    DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  trades       Trade[]
+
+  @@index([status])
+  @@index([tokenSymbol])
+}
+
+model Trade {
+  id              String      @id @default(uuid())
+  offer           Offer       @relation(fields: [offerId], references: [id])
+  offerId         String
+  buyer           User        @relation("BuyerTrades", fields: [buyerId], references: [id])
+  buyerId         String
+  seller          User        @relation("SellerTrades", fields: [sellerId], references: [id])
+  sellerId        String
+  escrowAddress   String
+  onChainTradeId  Int?
+  amount          Decimal
+  price           Decimal
+  status          TradeStatus @default(CREATED)
+  txHashCreate    String?
+  txHashRelease   String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  messages        Message[]
+
+  @@index([status])
+  @@index([buyerId])
+  @@index([sellerId])
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  trade     Trade    @relation(fields: [tradeId], references: [id])
+  tradeId   String
+  sender    User     @relation(fields: [senderId], references: [id])
+  senderId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([tradeId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  type      String
+  payload   Json
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
